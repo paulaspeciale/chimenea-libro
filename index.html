@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chimenea y Libro Antiguo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="scene">
+
+    <!-- Chimenea -->
+    <div class="fireplace-container">
+      <canvas class="webgl"></canvas>
+      <!-- Destello cálido en el instante en que la hoja entra en las llamas -->
+      <div id="fireImpact" class="fire-impact" aria-hidden="true"></div>
+      <button id="soundToggle" class="sound-toggle" type="button"
+              aria-label="Activar sonido del fuego" title="Sonido del fuego">🔇</button>
+    </div>
+
+    <!-- Libro -->
+    <div class="book-section">
+      <div class="book-wrapper">
+        <div class="book-cover">
+          <img src="./bookcover2.png"
+               alt="Portada del Libro Antiguo" crossorigin="anonymous">
+          <!-- Textarea transparente sobre la página derecha del libro -->
+          <textarea
+            id="pageText"
+            class="page-textarea"
+            placeholder="Escribe aquí tus palabras…"
+            maxlength="600"
+            spellcheck="false"
+          ></textarea>
+        </div>
+      </div>
+
+      <button id="throwPageBtn" class="throw-btn">🔥 Arrojar página al fuego</button>
+
+      <a id="reelDownload" class="reel-download" download hidden>🎬 Descargar el video</a>
+
+      <div class="phrase-container">
+       
+        <div id="dynamicText" class="dynamic-phrase"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-inner">
+      <h2 class="footer-title">Sobre esta app</h2>
+      <p class="footer-text">
+        Escribir en un papel todas aquellas palabras, frases o recuerdos que te causan dolor
+        y luego quemarlos es un poderoso ritual de liberación emocional. Este acto físico te
+        permite materializar el desprendimiento, dándole a tu mente la señal de que estás
+        soltando y transformando esa carga.
+      </p>
+      <div class="footer-divider"></div>
+      <p class="footer-credit">🔥 Libro Horrible — un espacio para soltar</p>
+    </div>
+  </footer>
+
+  <!-- Hoja voladora -->
+  <div id="flyingPage" class="flying-page">
+    <!-- Mancha de ceniza que avanza desde la esquina inferior derecha -->
+    <div class="page-char" aria-hidden="true"></div>
+    <div class="page-content">
+      <p>Las palabras arden, pero el recuerdo permanece...</p>
+    </div>
+  </div>
+
+  <!-- Resplandor cálido detrás de la hoja mientras se lee el mensaje -->
+  <div id="pageSpotlight" class="page-spotlight" aria-hidden="true"></div>
+
+  <!-- Chispas: brasas de la hoja al quemarse y del fuego al recibirla -->
+  <div id="emberLayer" class="ember-layer" aria-hidden="true"></div>
+
+  <!-- Sonido ambiente del fuego — reemplazar fire-crackle.mp3 por tu propio
+       archivo (ver instrucciones). loop + preload para que esté listo en
+       cuanto el usuario active el sonido. -->
+  <audio id="fireAmbience" src="fire-crackle.wav" loop preload="auto"></audio>
+
+  <!-- Scripts -->
+    <!-- Shaders de la chimenea -->
+    <script type="x-shader/x-vertex" id="basicVert">
+        precision highp float; varying vec2 vUv; void main() { vUv = uv; vec4 modelViewPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * modelViewPosition; }
+    </script>
+    <script type="x-shader/x-fragment" id="rgbLightmapFrag">
+        uniform sampler2D map; uniform float ratioR, ratioG, ratioB, gamma; varying vec2 vUv;
+        void main() { vec4 tex = texture2D(map, vUv); float col = tex.r*ratioR + tex.g*ratioG + tex.b*ratioB; col = pow(col, gamma); gl_FragColor = vec4(col,col,col,1.); }
+    </script>
+    <script type="x-shader/x-vertex" id="fireVert">
+        precision highp float; uniform sampler2D noiseMap; uniform float time, intensity; varying vec2 vUv;
+        void main() { vUv = uv; vec4 noise = texture2D(noiseMap, vUv*.3 + vec2(0., -time*.2)); vec3 pos = position; pos.y *= intensity; vec3 d = vec3(0.); d.z += (-.5+noise.g)*.1*vUv.y; d.y += (-.5+noise.r)*.2*vUv.y; vec4 mv = modelViewMatrix * vec4(pos+d,1.); gl_Position = projectionMatrix * mv; }
+    </script>
+    <script type="x-shader/x-fragment" id="fireFrag">
+        uniform sampler2D noiseMap; uniform float time, opacity, stylizeRatio, stylizeThreshold, details; uniform bool grayscale; varying vec2 vUv;
+        float borders(vec2 uv, float t, float l, float b, float r, float g){ return (1.-smoothstep(t,t+g,uv.y))*smoothstep(b-g,b,uv.y)*(1.-smoothstep(r,r+g,uv.x))*smoothstep(l-g,l,uv.x); }
+        void main() {
+            vec4 n1 = texture2D(noiseMap, vUv*vec2(2.,2.)+vec2(0.,-time*3.));
+            vec4 n2 = texture2D(noiseMap, vUv*vec2(3.,1.)+vec2(0.,-time));
+            vec4 n3 = texture2D(noiseMap, vUv*vec2(1.,1.)+vec2(0.,-time*1.5));
+            float holes = smoothstep(.3,.6, n3.r*n3.g + pow(1.-vUv.y,2.));
+            float red = n1.r + n1.g*.5 + n1.b*.25;
+            float green = n1.r * borders(vUv,.8,.4,.1,.6,.1);
+            float blue = n1.r * borders(vUv,.6,.5,.1,.5,.1);
+            vec4 flame = vec4(red, green, blue, 1.);
+            flame.rgb += (n2.r*n2.g*n2.b)*details;
+            vec3 sty = vec3(step(stylizeThreshold,flame.rgb));
+            flame.rgb = mix(flame.rgb, sty, stylizeRatio);
+            flame.rgb *= borders(vUv,.7,.3,.4,.7,.25) * opacity * holes;
+            if(grayscale) { float v = dot(flame.rgb,vec3(.2,.3,.2)); flame = vec4(v,v,v,1.); }
+            gl_FragColor = flame;
+        }
+    </script>
+    <script type="x-shader/x-fragment" id="ashesFrag">
+        uniform sampler2D noiseMap; uniform float time; varying vec2 vUv;
+        void main() {
+            vec4 n1 = texture2D(noiseMap, vUv*2.2 + vec2(time*.1, -time*.9));
+            vec4 n2 = texture2D(noiseMap, vUv*3. + vec2(0., -time*1.6));
+            float ashes = 1. - (n1.r * n2.g * n2.b);
+            ashes += pow(vUv.y, 2.);
+            ashes = smoothstep(.65,.75, ashes);
+            gl_FragColor = vec4(ashes,ashes,ashes,1.);
+        }
+    </script>
+ 
+    <script src="script.js" type="module"></script>
+
+</body>
+</html>

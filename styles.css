@@ -1,0 +1,771 @@
+@import url('https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+
+*, *::before, *::after { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+}
+
+html, body {
+  height: 100%;
+  /* overflow-x se mantiene oculto (nada debe desbordar a los costados);
+     overflow-y ahora es auto para permitir bajar hasta el footer sin
+     romper la vista inmersiva de la chimenea + libro, que sigue
+     ocupando exactamente 100dvh como primera pantalla. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Marrón oscuro cálido — vs el negro frío original.
+     El rojo/naranja base evita que las sombras se vean "digitales". */
+  background: #0e0603;
+  font-family: 'Saira', sans-serif;
+  color: #f0dfc0;
+  font-size: 18px;
+}
+
+/* dvh = alto "real" visible en móviles (descuenta barra de direcciones
+   que aparece/desaparece al hacer scroll). Se declara DESPUÉS de
+   height:100% como mejora progresiva: los navegadores que no soportan
+   dvh simplemente ignoran la línea y se quedan con el 100%. */
+@supports (height: 100dvh) {
+  html, body { height: 100dvh; }
+}
+
+/* ====================== ATMÓSFERA DE HABITACIÓN ======================
+   Arquitectura en capas (de atrás a delante):
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ body::after  z:9998 — resplandor del fuego, animado (solo opacity)│
+   │ body::before z:9999 — viñeta + paredes laterales, estático        │
+   └──────────────────────────────────────────────────────────────────┘
+   Ambos con pointer-events: none → no bloquean interacciones.
+   Solo se anima opacity (GPU-composited) → 0 repaints.
+   ================================================================= */
+
+/* Capa 1 — Viñeta + paredes */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background:
+    /* Viñeta principal: las esquinas se oscurecen como una habitación real */
+    radial-gradient(
+      ellipse 92% 88% at 50% 50%,
+      transparent 28%,
+      rgba(5, 2, 0, 0.42) 65%,
+      rgba(3, 1, 0, 0.76) 100%
+    ),
+    /* Pared lateral izquierda */
+    linear-gradient(
+      to right,
+      rgba(5, 2, 0, 0.38) 0%,
+      transparent 26%
+    ),
+    /* Pared lateral derecha */
+    linear-gradient(
+      to left,
+      rgba(5, 2, 0, 0.38) 0%,
+      transparent 26%
+    ),
+    /* Techo (arco superior oscuro) */
+    linear-gradient(
+      to bottom,
+      rgba(3, 1, 0, 0.55) 0%,
+      transparent 18%
+    );
+}
+
+/* Capa 2 — Resplandor animado del fuego */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  /* El gradiente es FIJO — solo cambia la opacidad para el parpadeo.
+     Dos focos: el fuego (arriba) y el reflejo en la mesa (abajo). */
+  background:
+    radial-gradient(
+      ellipse 88% 68% at 50% 20%,
+      rgba(185, 82, 14, 0.20) 0%,
+      rgba(130, 48, 8, 0.12) 42%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 65% 38% at 50% 100%,
+      rgba(95, 35, 6, 0.24) 0%,
+      transparent 58%
+    );
+  animation: fireRoomGlow 3.8s ease-in-out infinite alternate;
+}
+
+/* Parpadeo de la luz del fuego.
+   Valores irregulares → imita la combustión orgánica real. */
+@keyframes fireRoomGlow {
+  0%   { opacity: 0.55; }
+  18%  { opacity: 0.82; }
+  35%  { opacity: 0.60; }
+  52%  { opacity: 0.90; }
+  68%  { opacity: 0.63; }
+  83%  { opacity: 0.85; }
+  100% { opacity: 0.70; }
+}
+
+/* Layout */
+.scene {
+  display: grid;
+  height: 100vh;
+  grid-template-rows: 46vh 54vh;
+}
+@supports (height: 100dvh) {
+  .scene { height: 100dvh; }
+}
+
+/* Chimenea */
+.fireplace-container {
+  position: relative;
+  overflow: hidden;
+  /* Marrón oscuro cálido en lugar de negro puro:
+     se nota en los bordes del canvas y detrás de la chimenea */
+  background: #120805;
+}
+
+/* Borde de transición suave chimenea→libro:
+   un velo oscuro-cálido en el borde inferior evita el corte abrupto */
+.fireplace-container::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: linear-gradient(to bottom, transparent, rgba(12, 5, 1, 0.65));
+  pointer-events: none;
+  z-index: 2;
+}
+
+canvas.webgl {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Botón de sonido — círculo discreto sobre la chimenea */
+.sound-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 223, 192, 0.25);
+  background: rgba(14, 6, 3, 0.55);
+  color: #f0dfc0;
+  font-size: 1.2em;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.25s ease, transform 0.15s ease, border-color 0.25s ease;
+}
+.sound-toggle:hover  { background: rgba(139, 69, 19, 0.55); border-color: rgba(240, 223, 192, 0.5); }
+.sound-toggle:active { transform: scale(0.92); }
+.sound-toggle[data-playing="true"] { border-color: rgba(200, 168, 112, 0.65); }
+
+/* Libro + Frase */
+.book-section {
+  /* Capas apiladas (la primera lista es la más al frente):
+     1. Sombra superior — como si el marco de la chimenea proyectara sombra
+     2. Veta fina de madera horizontal (2 frecuencias para que no sea mecánico)
+     3. Gradiente base cálido, más saturado que antes */
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(4, 1, 0, 0.55) 0%,
+      rgba(4, 1, 0, 0.18) 22%,
+      transparent 45%
+    ),
+    repeating-linear-gradient(
+      89.4deg,
+      transparent 0px,
+      transparent 3px,
+      rgba(10, 4, 1, 0.07) 3px,
+      rgba(10, 4, 1, 0.07) 4px
+    ),
+    repeating-linear-gradient(
+      90.6deg,
+      transparent 0px,
+      transparent 8px,
+      rgba(6, 2, 0, 0.05) 8px,
+      rgba(6, 2, 0, 0.05) 9px
+    ),
+    linear-gradient(175deg, #1e1108 0%, #341d0c 55%, #1e1108 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+  overflow: hidden;
+  /* Sombra interna reforzada arriba (debajo de la chimenea) */
+  box-shadow:
+    inset 0 14px 40px rgba(0,0,0,0.75),
+    inset 0 -4px 20px rgba(0,0,0,0.3);
+}
+
+/* ====================== PORTADA DEL LIBRO ====================== */
+.book-wrapper {
+  flex-shrink: 0;
+  max-width: 620px;
+  width: 100%;
+  perspective: 2500px;
+  /* Sombra más cálida — el libro descansa sobre madera iluminada por fuego */
+  filter: drop-shadow(0 20px 35px rgba(0,0,0,0.85))
+          drop-shadow(0 6px 18px rgba(100,40,5,0.35));
+}
+
+.book-cover {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 
+    inset 0 0 80px rgba(0,0,0,0.7),
+    0 20px 40px rgba(0,0,0,0.8);
+  transition: transform 0.4s ease;
+}
+
+.book-cover:hover {
+  transform: rotate(2deg) scale(1.02);
+}
+
+.book-cover img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ── Textarea transparente sobre la página derecha ──────────────────────────
+   Coordenadas calibradas sobre bookcover2.png:
+   la página derecha (la limpia, con rayas) ocupa aprox.
+   52 %–95 % horizontal y 4 %–94 % vertical de la imagen.
+   El padding interior simula los márgenes de la hoja.               */
+.page-textarea {
+  position: absolute;
+  top: 4%;
+  left: 62%;
+  width: 33%;
+  height: 88%;
+
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+
+  color: #2a1608;
+  caret-color: #7a3d10;
+  font-family: 'Crimson Text', serif;
+  font-style: italic;
+  font-size: clamp(1.15em, 2.1vw, 1.65em);
+  line-height: 1.85;            /* se alinea con las rayas de la hoja */
+
+  padding: 9% 6% 6% 4%;
+
+  cursor: text;
+  z-index: 5;
+
+  /* ocultar scrollbar — el texto que no cabe se va al fuego de todas formas */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.page-textarea::-webkit-scrollbar { display: none; }
+
+.page-textarea::placeholder {
+  color: rgba(42, 22, 8, 0.30);
+  font-style: italic;
+}
+
+/* Frase */
+.phrase-container {
+  width: min(620px, 100%);
+  text-align: center;
+}
+
+.phrase-title {
+  font-size: clamp(1.4em, 3.2vw, 1.9em);
+  margin-bottom: 8px;
+  color: #c8a870;
+  text-shadow: 0 0 14px rgba(200,168,112,.4);
+}
+
+.dynamic-phrase {
+  background: rgba(255, 252, 243, 0.96);
+  color: #3c2a18;
+  padding: 14px 20px;
+  border-radius: 6px;
+  font-family: 'Crimson Text', serif;
+  font-size: clamp(1.3em, 2.6vw, 1.6em);
+  font-style: italic;
+  line-height: 1.55;
+  border: 1px solid #c8a870;
+  box-shadow: 0 6px 20px rgba(0,0,0,.6);
+  transition: opacity .4s ease;
+}
+/* ====================== BOTÓN Y HOJA VOLADORA ====================== */
+.throw-btn {
+  margin-top: 15px;
+  padding: 22px 48px;
+  max-width: 92%;
+  background: #8b4513;
+  color: #f0dfc0;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Saira', sans-serif;
+  font-weight: 600;
+  font-size: clamp(1em, 7vw, 1.25em);
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+  transition: all 0.3s;
+}
+.throw-btn:hover  { background: #a0522d; transform: translateY(-3px); }
+.throw-btn:active { transform: scale(0.95); }
+
+/* Aparece cuando el video del reel está listo para bajar */
+.reel-download {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 12px 28px;
+  background: transparent;
+  color: #c8a870;
+  border: 1px solid #c8a870;
+  border-radius: 8px;
+  font-family: 'Saira', sans-serif;
+  font-weight: 600;
+  font-size: 0.95em;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  transition: opacity 0.4s ease, transform 0.4s ease, background 0.25s ease;
+  pointer-events: none;
+}
+.reel-download.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.reel-download:hover { background: rgba(200, 168, 112, 0.15); }
+.reel-download[hidden] { display: none; }
+
+/* ====================== HOJA ARRANCADA ======================
+   La posición (left/top/width/height) la calcula JS dinámicamente.
+   Aquí solo definimos el aspecto visual del papel.
+   ============================================================ */
+.flying-page {
+  position: fixed;      /* sobreescrito por JS */
+  display: none;        /* sobreescrito por JS */
+  pointer-events: none;
+  z-index: 10000;
+  transform-origin: center center;
+  overflow: hidden;
+  backface-visibility: hidden;
+
+  /* Papel envejecido con líneas de escritura */
+  background:
+    repeating-linear-gradient(
+      transparent 0px,
+      transparent 22px,
+      rgba(120, 90, 55, 0.22) 22px,
+      rgba(120, 90, 55, 0.22) 23px
+    ),
+    radial-gradient(ellipse at 35% 45%, #f6ead1 0%, #ede0c2 50%, #e5d3ae 100%);
+
+  /* Borde izquierdo RASGADO — donde estaba la encuadernación.
+     Los otros tres lados son limpios.
+     El polígono recorre: top-left → top-right → bottom-right → bottom-left
+     y luego sube por el borde izq. con dientes irregulares. */
+  clip-path: polygon(
+    0% 0%, 100% 0%, 100% 100%, 0% 100%,
+    3% 93%, 0% 86%, 5% 79%, 1% 72%, 7% 65%, 0% 57%,
+    4% 50%, 1% 43%, 6% 36%, 0% 28%, 4% 21%, 1% 14%, 5% 7%, 0% 0%
+  );
+
+  font-family: 'Crimson Text', serif;
+  font-size: 1.25em;
+  line-height: 1.5;
+  color: #3c2a18;
+  /* padding-left extra para compensar el borde rasgado */
+  padding: 14px 12px 14px 18px;
+}
+
+.flying-page .page-content {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-style: italic;
+  opacity: 0.92;
+}
+
+/* El texto siempre cabe: JS ajusta el font-size, pero el navegador
+   puede partir palabras larguísimas en vez de desbordar la hoja. */
+.flying-page .page-content p {
+  max-width: 100%;
+  max-height: 100%;
+  overflow-wrap: anywhere;
+  /* Halo cálido muy suave — hace que el mensaje "brille" sobre el papel */
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 18px rgba(255, 170, 70, 0.18);
+}
+
+/* Respiración sutil mientras el mensaje se lee en el centro */
+.flying-page.is-reading .page-content {
+  animation: pageBreathe 4.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes pageBreathe {
+  0%, 100% { transform: translateY(-1.5px) rotate(-0.22deg); }
+  50%      { transform: translateY(1.5px)  rotate(0.22deg); }
+}
+
+/* ── Ceniza ──────────────────────────────────────────────────────────────
+   Un único div grande recortado por el clip-path del papel. Su degradado
+   va de negro (centro, ya consumido) a naranja incandescente (borde que
+   todavía arde) y termina en transparente, así que el "frente de fuego"
+   se ve como una mancha irregular al crecer. Se anima SOLO con
+   transform/opacity → trabajo para el compositor, no para el layout. */
+.page-char {
+  position: absolute;
+  left: -30%;
+  top: -30%;
+  width: 160%;
+  height: 160%;
+  z-index: 2;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0);
+  /* La ceniza nace en la esquina inferior derecha */
+  transform-origin: 74% 76%;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      #050301 0%,
+      #0c0602 24%,
+      #1b0d04 40%,
+      #43200a 54%,
+      #8a3c0c 64%,
+      #e0701a 70%,
+      rgba(255, 175, 65, 0.9) 74%,
+      rgba(255, 120, 30, 0.38) 80%,
+      rgba(255, 90, 10, 0) 88%
+    );
+  will-change: transform, opacity;
+}
+
+/* ====================== RESPLANDOR DE LECTURA ====================== */
+.page-spotlight {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  display: none;
+  z-index: 9997;
+  pointer-events: none;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  background:
+    radial-gradient(
+      ellipse at center,
+      rgba(255, 198, 120, 0.30) 0%,
+      rgba(255, 152, 60, 0.14) 38%,
+      rgba(255, 120, 30, 0.05) 58%,
+      transparent 72%
+    );
+  will-change: opacity;
+}
+
+/* ====================== CHISPAS / BRASAS ======================
+   Capa global: las brasas viajan de la hoja al fuego (y del fuego
+   hacia arriba), así que no pueden vivir dentro del clip-path del
+   papel. Cada partícula es un span posicionado con transform. */
+.ember-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.ember-particle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    circle,
+    #fffbe8 0%,
+    #ffd97a 26%,
+    #ff9b2f 52%,
+    rgba(255, 100, 15, 0.55) 72%,
+    rgba(255, 80, 0, 0) 82%
+  );
+  will-change: transform, opacity;
+}
+
+/* ====================== DESTELLO DE LA CHIMENEA ======================
+   Flash cálido que cubre la boca del fuego en el impacto. Se anima
+   con WAAPI (opacity + scale) desde script.js. */
+.fire-impact {
+  position: absolute;
+  inset: -12% -8%;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  transform-origin: 50% 62%;
+  background:
+    radial-gradient(
+      ellipse 52% 42% at 50% 62%,
+      rgba(255, 244, 210, 0.95) 0%,
+      rgba(255, 185, 80, 0.72) 24%,
+      rgba(235, 115, 22, 0.40) 48%,
+      rgba(150, 55, 5, 0.14) 68%,
+      transparent 82%
+    );
+  will-change: opacity, transform;
+}
+
+/* La secuencia completa (tirón → exhibición → vuelo al fuego) se define
+   y ejecuta enteramente vía Web Animations API en script.js. Mantenerla
+   ahí en vez de en @keyframes evita tener dos copias de la misma
+   coreografía (una en CSS, otra en JS) que puedan desincronizarse, y
+   permite que la trayectoria dependa de coordenadas reales calculadas
+   en el momento del click.
+   Nota: no hace falta tocar esta lógica para el responsive — usa
+   getBoundingClientRect() en vivo, así que se adapta sola a cualquier
+   tamaño de pantalla definido abajo. */
+
+/* ============================================================
+   RESPONSIVE
+   Breakpoints:
+     - ≤700px de ancho  → tablets / móviles en vertical
+     - ≤420px de ancho  → móviles pequeños
+     - alto ≤ 480px     → móvil en horizontal (el caso más apretado:
+       poca altura para chimenea + libro + botón a la vez)
+   ============================================================ */
+
+/* ── Tablets y móviles verticales ─────────────────────────────────── */
+@media (max-width: 700px) {
+  html, body { font-size: 16px; }
+
+  .scene {
+    grid-template-rows: 34vh 66vh;
+  }
+  @supports (height: 100dvh) {
+    .scene { grid-template-rows: 34dvh 66dvh; }
+  }
+
+  .book-section {
+    gap: 14px;
+    padding: 14px 12px;
+  }
+
+  .book-wrapper {
+    max-width: 480px;
+  }
+
+  .throw-btn {
+    padding: 16px 32px;
+    margin-top: 8px;
+  }
+
+  .dynamic-phrase {
+    padding: 10px 14px;
+  }
+
+  .sound-toggle {
+    width: 38px;
+    height: 38px;
+    top: 12px;
+    right: 12px;
+    font-size: 1.05em;
+  }
+}
+
+/* ── Móviles pequeños ──────────────────────────────────────────────── */
+@media (max-width: 420px) {
+  .scene {
+    grid-template-rows: 30vh 70vh;
+  }
+  @supports (height: 100dvh) {
+    .scene { grid-template-rows: 30dvh 70dvh; }
+  }
+
+  .book-section {
+    padding: 10px 8px;
+    gap: 10px;
+  }
+
+  .page-textarea {
+    padding: 9% 5% 6% 4%;
+    line-height: 1.7;
+  }
+
+  .throw-btn {
+    padding: 14px 24px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .reel-download {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* ── Móvil en horizontal: muy poca altura disponible ─────────────────
+   En lugar de apilar chimenea arriba y libro abajo (que dejaría a cada
+   uno con una franja mínima), se ponen lado a lado para aprovechar el
+   ancho, que sobra en landscape. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .scene {
+    grid-template-columns: 38% 62%;
+    grid-template-rows: 1fr;
+  }
+
+  .fireplace-container::after {
+    /* En este layout ya no hay un corte horizontal chimenea→libro */
+    display: none;
+  }
+
+  .book-section {
+    padding: 10px 14px;
+    gap: 8px;
+    overflow-y: auto;
+  }
+
+  .book-wrapper {
+    max-width: 360px;
+  }
+
+  .throw-btn {
+    padding: 10px 22px;
+    margin-top: 4px;
+  }
+
+  .dynamic-phrase {
+    font-size: 1em;
+    padding: 8px 12px;
+  }
+
+  .sound-toggle {
+    width: 34px;
+    height: 34px;
+    top: 8px;
+    right: 8px;
+  }
+}
+
+/* ── Respeto por "notches" / áreas seguras en móviles con recortes ──── */
+@supports (padding: max(0px)) {
+  .sound-toggle {
+    top: max(16px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+  }
+  .book-section {
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Pantallas muy anchas: evitar que el libro quede minúsculo ──────── */
+@media (min-width: 1400px) {
+  .book-wrapper { max-width: 720px; }
+  .phrase-container { width: min(720px, 100%); }
+}
+
+/* ====================== FOOTER ======================
+   Va debajo de .scene (que ocupa 100dvh), así que solo se ve al hacer
+   scroll — no compite con la experiencia inmersiva de la primera
+   pantalla. Misma paleta cálida/oscura del resto del sitio. */
+.app-footer {
+  position: relative;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(4, 1, 0, 0.4) 0%,
+      transparent 12%
+    ),
+    linear-gradient(175deg, #140b05 0%, #1e1108 60%, #140b05 100%);
+  border-top: 1px solid rgba(200, 168, 112, 0.18);
+  padding: 48px 20px 32px;
+}
+
+.footer-inner {
+  max-width: 620px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.footer-title {
+  font-family: 'Saira', sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.15em, 2.6vw, 1.4em);
+  letter-spacing: 0.02em;
+  color: #c8a870;
+  text-shadow: 0 0 14px rgba(200, 168, 112, 0.35);
+  margin-bottom: 16px;
+}
+
+.footer-text {
+  font-family: 'Crimson Text', serif;
+  font-style: italic;
+  font-size: clamp(1em, 2vw, 1.15em);
+  line-height: 1.75;
+  color: rgba(240, 223, 192, 0.82);
+}
+
+.footer-divider {
+  width: 60px;
+  height: 1px;
+  margin: 28px auto;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(200, 168, 112, 0.5),
+    transparent
+  );
+}
+
+.footer-credit {
+  font-family: 'Saira', sans-serif;
+  font-size: 0.85em;
+  letter-spacing: 0.03em;
+  color: rgba(240, 223, 192, 0.45);
+}
+
+@media (max-width: 700px) {
+  .app-footer {
+    padding: 36px 16px 24px;
+  }
+  .footer-divider {
+    margin: 20px auto;
+  }
+}
